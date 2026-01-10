@@ -7,6 +7,7 @@ import random
 from config.database import SessionLocal
 from dao.model.Patient import Patient
 from dao.model.GlucoseReading import GlucoseReading
+from dao.model.PatientClinicalSetting import PatientClinicalSetting
 from service.DexcomService import get_current_glucose
 from service.AlertService import get_alert_service
 
@@ -63,13 +64,27 @@ def fetch_glucose_readings_for_all_users():
 
                 logger.info(f"Saved reading for patient {patient.id}: {reading.value} mg/dL (source: {reading.source})")
 
-                # Check for alerts
                 if alert_service is not None:
                     try:
+                        clinical_setting = db.query(PatientClinicalSetting).filter(
+                            PatientClinicalSetting.patient_id == patient.id
+                        ).first()
+
+                        if clinical_setting:
+                            low_threshold = clinical_setting.low_threshold
+                            high_threshold = clinical_setting.high_threshold
+                            logger.info(f"Using custom thresholds for patient {patient.id}: low={low_threshold}, high={high_threshold}")
+                        else:
+                            low_threshold = 70
+                            high_threshold = 200
+                            logger.info(f"Using default thresholds for patient {patient.id}: low={low_threshold}, high={high_threshold}")
+
                         alert_service.check_and_send_alert(
                             patient_id=patient.id,
                             glucose_value=reading.value,
-                            timestamp=reading.timestamp
+                            timestamp=reading.timestamp,
+                            low_threshold=low_threshold,
+                            high_threshold=high_threshold
                         )
                     except Exception as alert_error:
                         logger.error(f"❌ ALERT SERVICE ERROR: {alert_error}", exc_info=True)

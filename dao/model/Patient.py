@@ -20,6 +20,7 @@ class Patient(User):
     dexcom_password = Column(String(255), nullable=True)
 
     glucose_readings = relationship("GlucoseReading", back_populates="patient")
+    clinical_setting = relationship("PatientClinicalSetting", back_populates="patient", uselist=False)
 
     __mapper_args__ = {
         'polymorphic_identity': 'PATIENT',
