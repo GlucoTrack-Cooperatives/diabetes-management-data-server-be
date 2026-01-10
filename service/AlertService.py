@@ -22,14 +22,15 @@ class AlertService:
         )
         logger.info(f"✓ Alert Service initialized - Topic: {self.topic_path}")
 
-    def check_and_send_alert(self, patient_id: UUID, glucose_value: int, timestamp: datetime):
+    def check_and_send_alert(self, patient_id: UUID, glucose_value: int, timestamp: datetime,
+                             low_threshold: int = 70, high_threshold: int = 200):
         alert_type = None
         severity = None
 
-        if glucose_value < 40:
+        if glucose_value < low_threshold:
             alert_type = "LOW"
             severity = "CRITICAL"
-        elif glucose_value > 200:
+        elif glucose_value > high_threshold:
             alert_type = "HIGH"
             severity = "WARNING"
 
@@ -45,9 +46,9 @@ class AlertService:
 
             # Create descriptive message
             if alert_type == "LOW":
-                message = f"CRITICAL: Low glucose alert - {glucose_value} mg/dL detected (below 40 mg/dL)"
+                message = f"CRITICAL: Low glucose alert - {glucose_value} mg/dL detected (below {low_threshold} mg/dL)"
             else:  # HIGH
-                message = f"WARNING: High glucose alert - {glucose_value} mg/dL detected (above 200 mg/dL)"
+                message = f"WARNING: High glucose alert - {glucose_value} mg/dL detected (above {high_threshold} mg/dL)"
 
             alert_data = {
                 "patient_id": str(patient_id),
