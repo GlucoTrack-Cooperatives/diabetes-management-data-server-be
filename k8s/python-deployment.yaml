@@ -15,7 +15,7 @@ spec:
       serviceAccountName: gke-db-sa
       containers:
       - name: python-be
-        image: europe-central2-docker.pkg.dev/glucko-track-prod/glucko-repo/python-be:latest
+        image: europe-central2-docker.pkg.dev/glucko-track-prod/glucko-repository/python-be:latest
         ports:
           - containerPort: 8000
         env:
