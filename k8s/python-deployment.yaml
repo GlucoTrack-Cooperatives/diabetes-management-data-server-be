@@ -28,7 +28,7 @@ spec:
 
         # Database Configuration (matches Settings.db_url field)
         - name: DB_URL
-          value: "postgresql://glucko_admin:$(DB_PASSWORD)@127.0.0.1:5432/glucko_db"
+          value: "postgresql://admin:$(DB_PASSWORD)@127.0.0.1:5432/glucko_db"
 
         # Environment (matches Settings.env field)
         - name: ENV
