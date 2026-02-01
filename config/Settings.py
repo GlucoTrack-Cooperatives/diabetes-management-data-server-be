@@ -4,8 +4,6 @@ import os
 class Settings(BaseSettings):
     db_url: str
     dexcom_region: str = "OUS"
-    sqs_queue_url: str
-    aws_region: str
     env: str = "local"
 
     # Google Cloud Pub/Sub settings
@@ -15,7 +13,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file="config/.env.local",  # point to your file
-        env_file_encoding="utf-8"
+        env_file_encoding="utf-8",
+        extra="ignore"  # Ignore extra environment variables
     )
 
 settings = Settings()

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glucko-python
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: python-be
+  template:
+    metadata:
+      labels:
+        app: python-be
+    spec:
+      serviceAccountName: gke-db-sa
+      containers:
+      - name: python-be
+        image: europe-central2-docker.pkg.dev/glucko-track-prod/glucko-repository/python-be:latest
+        ports:
+          - containerPort: 8000
+        env:
+        # Database Password (Securely pulled from the cluster secret)
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: glucko-db-pass
+              key: password
+
+        # Database Configuration (matches Settings.db_url field)
+        - name: DB_URL
+          value: "postgresql://admin:$(DB_PASSWORD)@127.0.0.1:5432/glucko_db"
+
+        # Environment (matches Settings.env field)
+        - name: ENV
+          value: "production"
+
+        # Dexcom Configuration (matches Settings.dexcom_region field)
+        - name: DEXCOM_REGION
+          value: "OUS"
+
+        # Google Cloud Pub/Sub Configuration (matches Settings fields)
+        - name: GCP_PROJECT_ID
+          value: "glucko-track-prod"
+        - name: PUBSUB_TOPIC
+          value: "glucose-alerts"
+
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "400m"
+
+      # THE DATABASE TUNNEL (Sidecar)
+      - name: cloud-sql-proxy
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest
+        args:
+          - "--port=5432"
+          - "glucko-track-prod:europe-central2:glucko-db"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
