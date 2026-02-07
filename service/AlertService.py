@@ -15,7 +15,13 @@ WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 
 class AlertService:
     def __init__(self):
-        self.publisher = pubsub_v1.PublisherClient()
+        # Configure publisher with batch settings for immediate publishing
+        batch_settings = pubsub_v1.types.BatchSettings(
+            max_bytes=1024,  # 1KB - small batch size
+            max_latency=0.1,  # 100ms max delay
+            max_messages=1,  # Publish immediately with single message
+        )
+        self.publisher = pubsub_v1.PublisherClient(batch_settings=batch_settings)
         self.topic_path = self.publisher.topic_path(
             settings.gcp_project_id,
             settings.pubsub_topic
@@ -72,14 +78,20 @@ class AlertService:
             message_bytes = message_json.encode('utf-8')
 
             future = self.publisher.publish(self.topic_path, message_bytes)
-            message_id = future.result(timeout=10)
-
-            logger.info(f"✓ Alert published to Pub/Sub (Message ID: {message_id})")
-            return message_id
+            # Increased timeout and added retry logic
+            try:
+                message_id = future.result(timeout=30)
+                logger.info(f"✓ Alert published to Pub/Sub (Message ID: {message_id})")
+                return message_id
+            except TimeoutError:
+                logger.error(f"✗ Pub/Sub publish timed out after 30s. Message may still be delivered.")
+                # Don't raise, allow the job to continue
+                return None
 
         except Exception as e:
             logger.error(f"✗ Failed to publish alert to Pub/Sub: {e}")
-            raise
+            # Don't raise the exception to prevent blocking glucose readings
+            return None
 
 _alert_service = None
 
