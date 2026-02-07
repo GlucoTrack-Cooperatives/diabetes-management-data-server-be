@@ -15,16 +15,12 @@ WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 
 class AlertService:
     def __init__(self):
-        # Configure publisher with batch settings for immediate publishing
-        batch_settings = pubsub_v1.types.BatchSettings(
+        # Store configuration but don't create publisher yet
+        self.topic_path = f"projects/{settings.gcp_project_id}/topics/{settings.pubsub_topic}"
+        self.batch_settings = pubsub_v1.types.BatchSettings(
             max_bytes=1024,  # 1KB - small batch size
             max_latency=0.1,  # 100ms max delay
             max_messages=1,  # Publish immediately with single message
-        )
-        self.publisher = pubsub_v1.PublisherClient(batch_settings=batch_settings)
-        self.topic_path = self.publisher.topic_path(
-            settings.gcp_project_id,
-            settings.pubsub_topic
         )
         logger.info(f"✓ Alert Service initialized - Topic: {self.topic_path}")
 
@@ -77,19 +73,21 @@ class AlertService:
             message_json = json.dumps(alert_data)
             message_bytes = message_json.encode('utf-8')
 
-            future = self.publisher.publish(self.topic_path, message_bytes)
-            # Increased timeout and added retry logic
+            # Create a fresh publisher for each message to avoid connection pooling issues
+            publisher = pubsub_v1.PublisherClient(batch_settings=self.batch_settings)
+            future = publisher.publish(self.topic_path, message_bytes)
+
+            # Use shorter timeout since we're creating fresh publisher
             try:
-                message_id = future.result(timeout=30)
+                message_id = future.result(timeout=5)
                 logger.info(f"✓ Alert published to Pub/Sub (Message ID: {message_id})")
                 return message_id
             except TimeoutError:
-                logger.error(f"✗ Pub/Sub publish timed out after 30s. Message may still be delivered.")
-                # Don't raise, allow the job to continue
+                logger.error(f"✗ Pub/Sub publish timed out after 5s")
                 return None
 
         except Exception as e:
-            logger.error(f"✗ Failed to publish alert to Pub/Sub: {e}")
+            logger.error(f"✗ Failed to publish alert to Pub/Sub: {e}", exc_info=True)
             # Don't raise the exception to prevent blocking glucose readings
             return None
 
