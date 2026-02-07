@@ -70,27 +70,28 @@ class AlertService:
 
     def _send_to_pubsub(self, alert_data: dict):
         try:
+            import threading
+
             message_json = json.dumps(alert_data)
             message_bytes = message_json.encode('utf-8')
 
-            # Create a fresh publisher for each message to avoid connection pooling issues
-            publisher = pubsub_v1.PublisherClient(batch_settings=self.batch_settings)
-            future = publisher.publish(self.topic_path, message_bytes)
+            # Use threading to publish in background without blocking
+            def publish_in_thread():
+                try:
+                    publisher = pubsub_v1.PublisherClient(batch_settings=self.batch_settings)
+                    future = publisher.publish(self.topic_path, message_bytes)
+                    message_id = future.result(timeout=5.0)
+                    logger.info(f"✓ Alert published to Pub/Sub (Message ID: {message_id})")
+                except Exception as e:
+                    logger.error(f"✗ Background publish failed: {e}", exc_info=True)
 
-            # Wait briefly with a very short timeout to ensure message is queued
-            # but don't block the whole job if there's an issue
-            try:
-                message_id = future.result(timeout=1.0)
-                logger.info(f"✓ Alert published to Pub/Sub (Message ID: {message_id})")
-                return message_id
-            except Exception as e:
-                # If it times out or fails, log but don't block the job
-                logger.warning(f"⚠️ Pub/Sub publish didn't complete within 1s, but may still deliver: {e}")
-                return None
+            thread = threading.Thread(target=publish_in_thread, daemon=True)
+            thread.start()
+            logger.info(f"📤 Alert queued for background publishing")
+            return None
 
         except Exception as e:
-            logger.error(f"✗ Failed to publish alert to Pub/Sub: {e}", exc_info=True)
-            # Don't raise the exception to prevent blocking glucose readings
+            logger.error(f"✗ Failed to queue alert for Pub/Sub: {e}", exc_info=True)
             return None
 
 _alert_service = None
