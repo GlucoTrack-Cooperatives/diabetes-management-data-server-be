@@ -77,14 +77,17 @@ class AlertService:
             publisher = pubsub_v1.PublisherClient(batch_settings=self.batch_settings)
             future = publisher.publish(self.topic_path, message_bytes)
 
-            # Use shorter timeout since we're creating fresh publisher
-            try:
-                message_id = future.result(timeout=5)
-                logger.info(f"✓ Alert published to Pub/Sub (Message ID: {message_id})")
-                return message_id
-            except TimeoutError:
-                logger.error(f"✗ Pub/Sub publish timed out after 5s")
-                return None
+            # Add callback instead of blocking wait (fire-and-forget with logging)
+            def callback(future):
+                try:
+                    message_id = future.result()
+                    logger.info(f"✓ Alert published to Pub/Sub (Message ID: {message_id})")
+                except Exception as e:
+                    logger.error(f"✗ Pub/Sub callback failed: {e}", exc_info=True)
+
+            future.add_done_callback(callback)
+            logger.info(f"✓ Alert submitted to Pub/Sub (fire-and-forget)")
+            return None
 
         except Exception as e:
             logger.error(f"✗ Failed to publish alert to Pub/Sub: {e}", exc_info=True)
