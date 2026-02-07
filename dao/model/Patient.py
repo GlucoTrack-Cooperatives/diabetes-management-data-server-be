@@ -21,6 +21,7 @@ class Patient(User):
 
     glucose_readings = relationship("GlucoseReading", back_populates="patient")
     clinical_setting = relationship("PatientClinicalSetting", back_populates="patient", uselist=False)
+    alerts = relationship("Alert", back_populates="patient")
 
     __mapper_args__ = {
         'polymorphic_identity': 'PATIENT',
