@@ -1,5 +1,6 @@
 import json
 import logging
+import requests
 from datetime import datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -12,17 +13,13 @@ logger = logging.getLogger(__name__)
 # Europe/Warsaw timezone
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 
+# Java backend internal endpoint
+JAVA_ALERT_ENDPOINT = "http://glucko-java-service:8080/api/diabetes-management/internal/alerts"
+
 
 class AlertService:
     def __init__(self):
-        # Store configuration but don't create publisher yet
-        self.topic_path = f"projects/{settings.gcp_project_id}/topics/{settings.pubsub_topic}"
-        self.batch_settings = pubsub_v1.types.BatchSettings(
-            max_bytes=1024,  # 1KB - small batch size
-            max_latency=0.1,  # 100ms max delay
-            max_messages=1,  # Publish immediately with single message
-        )
-        logger.info(f"✓ Alert Service initialized - Topic: {self.topic_path}")
+        logger.info(f"✓ Alert Service initialized - Using HTTP endpoint: {JAVA_ALERT_ENDPOINT}")
 
     def check_and_send_alert(self, patient_id: UUID, glucose_value: int, timestamp: datetime,
                              low_threshold: int = 70, high_threshold: int = 200):
@@ -62,37 +59,34 @@ class AlertService:
                 "created_at": created_at_tz.isoformat()
             }
 
-            self._send_to_pubsub(alert_data)
+            success = self._send_to_java_backend(alert_data)
             logger.warning(f"🚨 {severity} {alert_type} alert for patient {patient_id}: {glucose_value} mg/dL")
-            return True
+            return success
 
         return False
 
-    def _send_to_pubsub(self, alert_data: dict):
+    def _send_to_java_backend(self, alert_data: dict):
+        """Send alert directly to Java backend via HTTP"""
         try:
-            import threading
+            response = requests.post(
+                JAVA_ALERT_ENDPOINT,
+                json=alert_data,
+                timeout=3.0
+            )
 
-            message_json = json.dumps(alert_data)
-            message_bytes = message_json.encode('utf-8')
+            if response.status_code == 200:
+                logger.info(f"✓ Alert sent to Java backend successfully (HTTP {response.status_code})")
+                return True
+            else:
+                logger.error(f"✗ Java backend returned error: HTTP {response.status_code}")
+                return False
 
-            # Use threading to publish in background without blocking
-            def publish_in_thread():
-                try:
-                    publisher = pubsub_v1.PublisherClient(batch_settings=self.batch_settings)
-                    future = publisher.publish(self.topic_path, message_bytes)
-                    message_id = future.result(timeout=5.0)
-                    logger.info(f"✓ Alert published to Pub/Sub (Message ID: {message_id})")
-                except Exception as e:
-                    logger.error(f"✗ Background publish failed: {e}", exc_info=True)
-
-            thread = threading.Thread(target=publish_in_thread, daemon=True)
-            thread.start()
-            logger.info(f"📤 Alert queued for background publishing")
-            return None
-
+        except requests.Timeout:
+            logger.error(f"✗ HTTP request to Java backend timed out after 3s")
+            return False
         except Exception as e:
-            logger.error(f"✗ Failed to queue alert for Pub/Sub: {e}", exc_info=True)
-            return None
+            logger.error(f"✗ Failed to send alert via HTTP: {e}", exc_info=True)
+            return False
 
 _alert_service = None
 
