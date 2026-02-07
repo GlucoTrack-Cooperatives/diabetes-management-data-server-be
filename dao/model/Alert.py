@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
 
-from config.database import Base
+from dao.model.User import Base
 
 
 class Alert(Base):
