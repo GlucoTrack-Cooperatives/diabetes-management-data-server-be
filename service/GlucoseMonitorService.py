@@ -23,6 +23,8 @@ except Exception as e:
 
 def fetch_glucose_readings_for_all_users():
     db: Session = SessionLocal()
+    alerts_to_send = []  # Collect alerts to send after DB work is done
+
     try:
         logger.info("Starting glucose reading fetch job...")
 
@@ -64,6 +66,7 @@ def fetch_glucose_readings_for_all_users():
 
                 logger.info(f"Saved reading for patient {patient.id}: {reading.value} mg/dL (source: {reading.source})")
 
+                # Check if alert is needed and collect for later sending
                 if alert_service is not None:
                     try:
                         clinical_setting = db.query(PatientClinicalSetting).filter(
@@ -79,15 +82,16 @@ def fetch_glucose_readings_for_all_users():
                             high_threshold = 200
                             logger.info(f"Using default thresholds for patient {patient.id}: low={low_threshold}, high={high_threshold}")
 
-                        alert_service.check_and_send_alert(
-                            patient_id=patient.id,
-                            glucose_value=reading.value,
-                            timestamp=reading.timestamp,
-                            low_threshold=low_threshold,
-                            high_threshold=high_threshold
-                        )
+                        # Collect alert data instead of sending immediately
+                        alerts_to_send.append({
+                            'patient_id': patient.id,
+                            'glucose_value': reading.value,
+                            'timestamp': reading.timestamp,
+                            'low_threshold': low_threshold,
+                            'high_threshold': high_threshold
+                        })
                     except Exception as alert_error:
-                        logger.error(f"❌ ALERT SERVICE ERROR: {alert_error}", exc_info=True)
+                        logger.error(f"❌ ERROR collecting alert data: {alert_error}", exc_info=True)
                 else:
                     logger.warning("⚠️ Alert service is None - skipping alert check")
 
@@ -102,3 +106,12 @@ def fetch_glucose_readings_for_all_users():
         logger.error(f"Error in glucose reading fetch job: {e}")
     finally:
         db.close()
+
+    # Send alerts AFTER database session is closed
+    if alert_service is not None and alerts_to_send:
+        logger.info(f"📤 Sending {len(alerts_to_send)} alerts outside DB transaction...")
+        for alert_data in alerts_to_send:
+            try:
+                alert_service.check_and_send_alert(**alert_data)
+            except Exception as e:
+                logger.error(f"❌ Failed to send alert: {e}", exc_info=True)
