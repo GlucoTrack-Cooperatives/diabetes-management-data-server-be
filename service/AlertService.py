@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -11,10 +11,14 @@ logger = logging.getLogger(__name__)
 # Europe/Warsaw timezone
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 
+# Alert time window - only create alerts for readings within this many minutes
+ALERT_TIME_WINDOW_MINUTES = 5
+
 
 class AlertService:
     def __init__(self):
         logger.info(f"✓ Alert Service initialized - Using database for alerts")
+        logger.info(f"ℹ️ Alert time window: {ALERT_TIME_WINDOW_MINUTES} minutes")
 
     def check_and_send_alert(self, patient_id: UUID, glucose_value: int, timestamp: datetime,
                              low_threshold: int = 70, high_threshold: int = 200):
@@ -37,6 +41,15 @@ class AlertService:
 
             # Current time in Warsaw timezone
             created_at_tz = datetime.now(WARSAW_TZ)
+
+            # ✅ NEW: Check if reading is within alert time window
+            time_diff = created_at_tz - timestamp_tz
+            if time_diff > timedelta(minutes=ALERT_TIME_WINDOW_MINUTES):
+                logger.info(
+                    f"⏭️ Skipping alert for patient {patient_id}: reading is {time_diff.total_seconds()/60:.1f} minutes old "
+                    f"(threshold: {ALERT_TIME_WINDOW_MINUTES} minutes)"
+                )
+                return False
 
             # Create descriptive message
             if alert_type == "LOW":
